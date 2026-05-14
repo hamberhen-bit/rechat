@@ -584,8 +584,12 @@
         const configuration = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' }
+            ],
+            iceCandidatePoolSize: 10
         };
 
         const chatArea = document.getElementById('chatArea');
@@ -617,16 +621,30 @@
 
         async function initLocalStream() {
             try {
+                console.log('📹 Kamera/mikrofon isteniyor...');
                 localStream = await navigator.mediaDevices.getUserMedia({
-                    video: true,
-                    audio: true
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
                 });
+                
                 localVideo.srcObject = localStream;
                 videoPlaceholder.style.display = 'none';
                 videoControls.style.display = 'flex';
+                
+                console.log('✅ Kamera/mikrofon erişimi başarılı');
+                console.log('📹 Video tracks:', localStream.getVideoTracks().length);
+                console.log('🎤 Audio tracks:', localStream.getAudioTracks().length);
+                
                 return true;
             } catch (error) {
-                console.error('Kamera erişim hatası:', error);
+                console.error('❌ Kamera erişim hatası:', error);
                 addSystemMessage('⚠️ Kamera/mikrofon erişimi reddedildi. Sadece metin sohbeti yapabilirsiniz.');
                 return false;
             }
@@ -634,26 +652,51 @@
 
         function createPeerConnection() {
             peerConnection = new RTCPeerConnection(configuration);
+            console.log('🔗 Peer connection oluşturuldu');
 
             if (localStream) {
                 localStream.getTracks().forEach(track => {
                     peerConnection.addTrack(track, localStream);
+                    console.log('➕ Track eklendi:', track.kind);
                 });
             }
 
             peerConnection.ontrack = (event) => {
-                remoteVideo.srcObject = event.streams[0];
+                console.log('📺 Remote track alındı:', event.track.kind);
+                if (remoteVideo.srcObject !== event.streams[0]) {
+                    remoteVideo.srcObject = event.streams[0];
+                    console.log('✅ Remote video bağlandı');
+                }
             };
 
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate && chatRoomId) {
+                    console.log('🧊 ICE candidate gönderiliyor');
                     const candidateRef = ref(db, 'chats/' + chatRoomId + '/candidates/' + myId);
-                    push(candidateRef, event.candidate.toJSON());
+                    push(candidateRef, {
+                        candidate: event.candidate.candidate,
+                        sdpMLineIndex: event.candidate.sdpMLineIndex,
+                        sdpMid: event.candidate.sdpMid
+                    });
+                }
+            };
+
+            peerConnection.oniceconnectionstatechange = () => {
+                console.log('🧊 ICE Connection State:', peerConnection.iceConnectionState);
+                if (peerConnection.iceConnectionState === 'connected') {
+                    console.log('🎉 WebRTC bağlantısı kuruldu!');
+                } else if (peerConnection.iceConnectionState === 'failed') {
+                    console.log('❌ WebRTC bağlantısı başarısız');
+                    addSystemMessage('⚠️ Video bağlantısı kurulamadı. Bağlantınızı kontrol edin.');
                 }
             };
 
             peerConnection.onconnectionstatechange = () => {
-                console.log('Connection state:', peerConnection.connectionState);
+                console.log('📡 Connection State:', peerConnection.connectionState);
+            };
+
+            peerConnection.onsignalingstatechange = () => {
+                console.log('🚦 Signaling State:', peerConnection.signalingState);
             };
         }
 
@@ -749,59 +792,98 @@
         async function startChat(isCaller) {
             isSearching = false;
             updateStatus('connected');
-            addSystemMessage('✅ Yabancı ile bağlandın! Sohbete başlayabilirsin.');
+            addSystemMessage('✅ Yabancı ile bağlandın! Video bağlantısı kuruluyor...');
             messageInput.disabled = false;
             sendBtn.disabled = false;
             messageInput.focus();
 
+            console.log('🎥 Video bağlantısı başlatılıyor... Caller:', isCaller);
+
             createPeerConnection();
 
-            if (isCaller) {
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-                
-                await set(ref(db, 'chats/' + chatRoomId + '/offer'), {
-                    type: offer.type,
-                    sdp: offer.sdp
-                });
-            } else {
-                onValue(ref(db, 'chats/' + chatRoomId + '/offer'), async (snapshot) => {
-                    const offer = snapshot.val();
-                    if (offer && !peerConnection.currentRemoteDescription) {
-                        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-                        const answer = await peerConnection.createAnswer();
-                        await peerConnection.setLocalDescription(answer);
-                        
-                        await set(ref(db, 'chats/' + chatRoomId + '/answer'), {
-                            type: answer.type,
-                            sdp: answer.sdp
-                        });
-                    }
-                }, { onlyOnce: true });
-            }
-
-            if (isCaller) {
-                onValue(ref(db, 'chats/' + chatRoomId + '/answer'), async (snapshot) => {
-                    const answer = snapshot.val();
-                    if (answer && !peerConnection.currentRemoteDescription) {
-                        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-                    }
-                }, { onlyOnce: true });
-            }
-
-            onValue(ref(db, 'chats/' + chatRoomId + '/candidates/' + partnerId), (snapshot) => {
+            // ICE candidates'ı dinle
+            const candidatesRef = ref(db, 'chats/' + chatRoomId + '/candidates/' + partnerId);
+            onValue(candidatesRef, async (snapshot) => {
                 const candidates = snapshot.val();
-                if (candidates) {
-                    Object.values(candidates).forEach(async (candidate) => {
+                if (!candidates) return;
+                
+                for (let key in candidates) {
+                    const candidate = candidates[key];
+                    if (candidate && peerConnection && peerConnection.remoteDescription) {
                         try {
                             await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                            console.log('✅ ICE candidate eklendi');
                         } catch (e) {
-                            console.error('Error adding ice candidate:', e);
+                            console.error('❌ ICE candidate hatası:', e);
                         }
-                    });
+                    }
                 }
             });
 
+            if (isCaller) {
+                console.log('📞 Caller: Offer oluşturuluyor...');
+                
+                try {
+                    const offer = await peerConnection.createOffer({
+                        offerToReceiveAudio: true,
+                        offerToReceiveVideo: true
+                    });
+                    await peerConnection.setLocalDescription(offer);
+                    
+                    await set(ref(db, 'chats/' + chatRoomId + '/offer'), {
+                        type: offer.type,
+                        sdp: offer.sdp
+                    });
+                    console.log('✅ Offer gönderildi');
+
+                    // Answer'ı bekle
+                    onValue(ref(db, 'chats/' + chatRoomId + '/answer'), async (snapshot) => {
+                        const answer = snapshot.val();
+                        if (answer && peerConnection && !peerConnection.currentRemoteDescription) {
+                            console.log('📩 Answer alındı');
+                            try {
+                                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                                console.log('✅ Remote description set edildi');
+                                addSystemMessage('🎥 Video bağlantısı kuruldu!');
+                            } catch (e) {
+                                console.error('❌ Answer hatası:', e);
+                            }
+                        }
+                    }, { onlyOnce: true });
+                } catch (e) {
+                    console.error('❌ Offer hatası:', e);
+                    addSystemMessage('⚠️ Video bağlantısı kurulamadı. Sadece metin sohbeti yapabilirsiniz.');
+                }
+            } else {
+                console.log('📞 Receiver: Offer bekleniyor...');
+                
+                // Offer'ı bekle
+                onValue(ref(db, 'chats/' + chatRoomId + '/offer'), async (snapshot) => {
+                    const offer = snapshot.val();
+                    if (offer && peerConnection && !peerConnection.currentRemoteDescription) {
+                        console.log('📩 Offer alındı');
+                        try {
+                            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                            console.log('✅ Remote description set edildi');
+                            
+                            const answer = await peerConnection.createAnswer();
+                            await peerConnection.setLocalDescription(answer);
+                            
+                            await set(ref(db, 'chats/' + chatRoomId + '/answer'), {
+                                type: answer.type,
+                                sdp: answer.sdp
+                            });
+                            console.log('✅ Answer gönderildi');
+                            addSystemMessage('🎥 Video bağlantısı kuruldu!');
+                        } catch (e) {
+                            console.error('❌ Answer hatası:', e);
+                            addSystemMessage('⚠️ Video bağlantısı kurulamadı. Sadece metin sohbeti yapabilirsiniz.');
+                        }
+                    }
+                }, { onlyOnce: true });
+            }
+
+            // Mesajlar
             const messagesRef = ref(db, 'chats/' + chatRoomId + '/messages');
             onValue(messagesRef, (snapshot) => {
                 const data = snapshot.val();
@@ -820,6 +902,7 @@
                 }
             });
 
+            // Typing indicator
             const typingRef = ref(db, 'chats/' + chatRoomId + '/typing/' + partnerId);
             onValue(typingRef, (snapshot) => {
                 if (snapshot.val()) {

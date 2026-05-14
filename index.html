@@ -587,7 +587,23 @@
                 { urls: 'stun:stun1.l.google.com:19302' },
                 { urls: 'stun:stun2.l.google.com:19302' },
                 { urls: 'stun:stun3.l.google.com:19302' },
-                { urls: 'stun:stun4.l.google.com:19302' }
+                { urls: 'stun:stun4.l.google.com:19302' },
+                // TURN sunucuları (NAT arkasındaki bağlantılar için)
+                {
+                    urls: 'turn:openrelay.metered.ca:80',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                }
             ],
             iceCandidatePoolSize: 10
         };
@@ -699,11 +715,24 @@
 
             peerConnection.oniceconnectionstatechange = () => {
                 console.log('🧊 ICE Connection State:', peerConnection.iceConnectionState);
-                if (peerConnection.iceConnectionState === 'connected') {
+                if (peerConnection.iceConnectionState === 'connected' || peerConnection.iceConnectionState === 'completed') {
                     console.log('🎉 WebRTC bağlantısı kuruldu!');
+                    addSystemMessage('🎥 Video/ses bağlantısı aktif!');
                 } else if (peerConnection.iceConnectionState === 'failed') {
-                    console.log('❌ WebRTC bağlantısı başarısız');
-                    addSystemMessage('⚠️ Video bağlantısı kurulamadı. Bağlantınızı kontrol edin.');
+                    console.log('❌ WebRTC bağlantısı başarısız - yeniden deneniyor...');
+                    // ICE restart
+                    if (peerConnection) {
+                        peerConnection.restartIce();
+                        console.log('🔄 ICE restart yapıldı');
+                    }
+                } else if (peerConnection.iceConnectionState === 'disconnected') {
+                    console.log('⚠️ Bağlantı koptu - bekleniyor...');
+                    setTimeout(() => {
+                        if (peerConnection && peerConnection.iceConnectionState === 'disconnected') {
+                            console.log('🔄 Tekrar bağlanmaya çalışılıyor...');
+                            peerConnection.restartIce();
+                        }
+                    }, 3000);
                 }
             };
 

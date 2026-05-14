@@ -546,7 +546,7 @@
         const firebaseConfig = {
             apiKey: "AIzaSyAA2iYWRbYzAy5HqBKgfM6_GOoE_kvtBCg",
             authDomain: "project-5536303254345831459.firebaseapp.com",
-            databaseURL: "https://project-5536303254345831459-default-rtdb.firebaseio.com",
+            databaseURL: "https://project-5536303254345831459-default-rtdb.firebaseio.com/",
             projectId: "project-5536303254345831459",
             storageBucket: "project-5536303254345831459.firebasestorage.app",
             messagingSenderId: "733073716045",
@@ -555,6 +555,20 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
+
+        // 🔍 Debug: Firebase bağlantı testi
+        console.log('🔥 Firebase başlatıldı');
+        console.log('📊 Database URL:', firebaseConfig.databaseURL);
+
+        // Test bağlantısı
+        set(ref(db, 'connection_test'), { 
+            test: 'Bağlantı başarılı!', 
+            timestamp: serverTimestamp() 
+        }).then(() => {
+            console.log('✅ Firebase WRITE çalışıyor!');
+        }).catch((error) => {
+            console.error('❌ Firebase WRITE hatası:', error.message);
+        });
 
         let myId = 'user_' + Math.random().toString(36).substr(2, 9);
         let partnerId = null;
@@ -699,18 +713,29 @@
             set(waitingRef, { 
                 timestamp: serverTimestamp(),
                 seeking: true 
+            }).then(() => {
+                console.log('✅ Bekleme kuyruğuna eklendi:', myId);
+            }).catch((error) => {
+                console.error('❌ Bekleme kuyruğu hatası:', error.message);
             });
 
             onValue(ref(db, 'waiting'), async (snapshot) => {
                 if (!isSearching || partnerId) return;
 
                 const waiting = snapshot.val();
+                console.log('👥 Bekleyen kullanıcılar:', waiting);
+                
                 if (!waiting) return;
 
                 const others = Object.keys(waiting).filter(id => id !== myId);
+                console.log('🔍 Diğer kullanıcılar:', others);
+                
                 if (others.length > 0) {
                     partnerId = others[0];
                     chatRoomId = myId < partnerId ? myId + '_' + partnerId : partnerId + '_' + myId;
+                    
+                    console.log('🎉 Eşleşme bulundu! Partner:', partnerId);
+                    console.log('🏠 Oda ID:', chatRoomId);
                     
                     await remove(ref(db, 'waiting/' + myId));
                     await remove(ref(db, 'waiting/' + partnerId));

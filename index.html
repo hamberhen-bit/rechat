@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RebChat - Yabancılarla Sohbet Et</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 24px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            position: relative;
+        }
+
+        .logo {
+            font-size: 42px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+            margin-bottom: 10px;
+        }
+
+        .tagline {
+            font-size: 14px;
+            opacity: 0.9;
+            font-weight: 300;
+        }
+
+        .status-bar {
+            background: #f8f9fa;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #6c757d;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.searching {
+            background: #ffc107;
+        }
+
+        .status-dot.connected {
+            background: #28a745;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-text {
+            font-size: 14px;
+            color: #495057;
+            font-weight: 500;
+        }
+
+        .online-count {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .main-content {
+            display: flex;
+            gap: 0;
+            background: #ffffff;
+        }
+
+        .video-section {
+            flex: 1;
+            background: #000;
+            position: relative;
+            min-height: 450px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .video-container {
+            position: relative;
+            flex: 1;
+            background: #1a1a1a;
+        }
+
+        #remoteVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            background: #000;
+        }
+
+        #localVideo {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 200px;
+            height: 150px;
+            border-radius: 12px;
+            border: 3px solid white;
+            object-fit: cover;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            z-index: 10;
+        }
+
+        .video-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            z-index: 10;
+        }
+
+        .video-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .video-btn.camera {
+            background: #667eea;
+        }
+
+        .video-btn.camera.off {
+            background: #dc3545;
+        }
+
+        .video-btn.mic {
+            background: #667eea;
+        }
+
+        .video-btn.mic.off {
+            background: #dc3545;
+        }
+
+        .video-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .video-placeholder {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: white;
+        }
+
+        .video-placeholder-icon {
+            font-size: 80px;
+            margin-bottom: 16px;
+        }
+
+        .video-placeholder-text {
+            font-size: 18px;
+            opacity: 0.8;
+        }
+
+        .chat-area {
+            flex: 1;
+            height: 450px;
+            overflow-y: auto;
+            padding: 25px;
+            background: #ffffff;
+            border-left: 2px solid #e9ecef;
+        }
+
+        .chat-area::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .chat-area::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        .chat-area::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 4px;
+        }
+
+        .message {
+            margin-bottom: 16px;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.stranger .bubble {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 18px 18px 18px 4px;
+        }
+
+        .message.you .bubble {
+            background: #f1f3f5;
+            color: #212529;
+            border-radius: 18px 18px 4px 18px;
+            margin-left: auto;
+        }
+
+        .bubble {
+            padding: 12px 18px;
+            max-width: 70%;
+            word-wrap: break-word;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .message.you {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .sender {
+            font-size: 11px;
+            font-weight: 600;
+            margin-bottom: 4px;
+            opacity: 0.8;
+        }
+
+        .system-message {
+            text-align: center;
+            color: #6c757d;
+            font-size: 13px;
+            margin: 20px 0;
+            font-style: italic;
+        }
+
+        .input-area {
+            padding: 20px 30px;
+            background: #f8f9fa;
+            border-top: 2px solid #e9ecef;
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 12px;
+        }
+
+        #messageInput {
+            flex: 1;
+            padding: 14px 20px;
+            border: 2px solid #dee2e6;
+            border-radius: 24px;
+            font-size: 15px;
+            outline: none;
+            transition: all 0.3s;
+            background: white;
+        }
+
+        #messageInput:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        #messageInput:disabled {
+            background: #e9ecef;
+            cursor: not-allowed;
+        }
+
+        button {
+            padding: 14px 28px;
+            border: none;
+            border-radius: 24px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        #sendBtn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        #sendBtn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        }
+
+        #sendBtn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        #newChatBtn {
+            background: #28a745;
+            color: white;
+            flex: 1;
+        }
+
+        #newChatBtn:hover {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+
+        #stopBtn {
+            background: #dc3545;
+            color: white;
+            flex: 1;
+        }
+
+        #stopBtn:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+        }
+
+        .welcome-screen {
+            text-align: center;
+            padding: 60px 40px;
+        }
+
+        .welcome-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+
+        .welcome-title {
+            font-size: 28px;
+            color: #212529;
+            margin-bottom: 12px;
+            font-weight: 700;
+        }
+
+        .welcome-text {
+            color: #6c757d;
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+
+        .typing-indicator {
+            display: none;
+            padding: 12px 18px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 18px 18px 18px 4px;
+            width: fit-content;
+            margin-bottom: 16px;
+        }
+
+        .typing-indicator.show {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+
+        .typing-dots {
+            display: flex;
+            gap: 4px;
+        }
+
+        .typing-dots span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: white;
+            animation: typingBounce 1.4s infinite;
+        }
+
+        .typing-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typingBounce {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-10px); }
+        }
+
+        @media (max-width: 600px) {
+            .logo {
+                font-size: 32px;
+            }
+
+            .main-content {
+                flex-direction: column;
+            }
+
+            .video-section {
+                min-height: 300px;
+            }
+
+            #localVideo {
+                width: 120px;
+                height: 90px;
+                bottom: 10px;
+                right: 10px;
+            }
+
+            .chat-area {
+                height: 350px;
+                border-left: none;
+                border-top: 2px solid #e9ecef;
+            }
+
+            .bubble {
+                max-width: 85%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">🔥 RebChat</div>
+            <div class="tagline">Dünyadan yabancılarla anonim sohbet et</div>
+        </div>
+
+        <div class="status-bar">
+            <div class="status">
+                <div class="status-dot" id="statusDot"></div>
+                <span class="status-text" id="statusText">Bağlantı bekleniyor...</span>
+            </div>
+            <div class="online-count" id="onlineCount">👥 0 çevrimiçi</div>
+        </div>
+
+        <div class="main-content">
+            <div class="video-section">
+                <div class="video-container">
+                    <video id="remoteVideo" autoplay playsinline></video>
+                    <video id="localVideo" autoplay playsinline muted></video>
+                    
+                    <div class="video-placeholder" id="videoPlaceholder">
+                        <div class="video-placeholder-icon">📹</div>
+                        <div class="video-placeholder-text">Yeni sohbet başlat</div>
+                    </div>
+
+                    <div class="video-controls" id="videoControls" style="display: none;">
+                        <button class="video-btn camera" id="toggleCamera" title="Kamera Aç/Kapat">
+                            📹
+                        </button>
+                        <button class="video-btn mic" id="toggleMic" title="Mikrofon Aç/Kapat">
+                            🎤
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-area" id="chatArea">
+                <div class="welcome-screen">
+                    <div class="welcome-icon">💬</div>
+                    <div class="welcome-title">RebChat'e Hoş Geldin!</div>
+                    <div class="welcome-text">
+                        Rastgele bir yabancı ile görüntülü sohbet için<br>
+                        <strong>"Yeni Sohbet Başlat"</strong> butonuna tıkla
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="typing-indicator" id="typingIndicator">
+            <div class="typing-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+
+        <div class="input-area">
+            <div class="input-wrapper">
+                <input type="text" id="messageInput" placeholder="Mesajını yaz..." disabled>
+                <button id="sendBtn" disabled>Gönder</button>
+            </div>
+            <div class="controls">
+                <button id="newChatBtn">🚀 Yeni Sohbet Başlat</button>
+                <button id="stopBtn" style="display: none;">⛔ Sohbeti Bitir</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getDatabase, ref, set, onValue, push, remove, onDisconnect, serverTimestamp, update } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAA2iYWRbYzAy5HqBKgfM6_GOoE_kvtBCg",
+            authDomain: "project-5536303254345831459.firebaseapp.com",
+            databaseURL: "https://project-5536303254345831459-default-rtdb.firebaseio.com",
+            projectId: "project-5536303254345831459",
+            storageBucket: "project-5536303254345831459.firebasestorage.app",
+            messagingSenderId: "733073716045",
+            appId: "1:733073716045:web:8cdf17b790789acd6efd04"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        let myId = 'user_' + Math.random().toString(36).substr(2, 9);
+        let partnerId = null;
+        let chatRoomId = null;
+        let isSearching = false;
+
+        // WebRTC variables
+        let localStream = null;
+        let peerConnection = null;
+        let isCameraOn = true;
+        let isMicOn = true;
+
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
+
+        const chatArea = document.getElementById('chatArea');
+        const messageInput = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const newChatBtn = document.getElementById('newChatBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const onlineCount = document.getElementById('onlineCount');
+        const typingIndicator = document.getElementById('typingIndicator');
+        
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const videoPlaceholder = document.getElementById('videoPlaceholder');
+        const videoControls = document.getElementById('videoControls');
+        const toggleCamera = document.getElementById('toggleCamera');
+        const toggleMic = document.getElementById('toggleMic');
+
+        // Online users tracking
+        const myPresenceRef = ref(db, 'presence/' + myId);
+        set(myPresenceRef, { online: true, timestamp: serverTimestamp() });
+        onDisconnect(myPresenceRef).remove();
+
+        onValue(ref(db, 'presence'), (snapshot) => {
+            const count = snapshot.exists() ? Object.keys(snapshot.val()).length : 0;
+            onlineCount.textContent = `👥 ${count} çevrimiçi`;
+        });
+
+        async function initLocalStream() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: true
+                });
+                localVideo.srcObject = localStream;
+                videoPlaceholder.style.display = 'none';
+                videoControls.style.display = 'flex';
+                return true;
+            } catch (error) {
+                console.error('Kamera erişim hatası:', error);
+                addSystemMessage('⚠️ Kamera/mikrofon erişimi reddedildi. Sadece metin sohbeti yapabilirsiniz.');
+                return false;
+            }
+        }
+
+        function createPeerConnection() {
+            peerConnection = new RTCPeerConnection(configuration);
+
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
+            }
+
+            peerConnection.ontrack = (event) => {
+                remoteVideo.srcObject = event.streams[0];
+            };
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate && chatRoomId) {
+                    const candidateRef = ref(db, 'chats/' + chatRoomId + '/candidates/' + myId);
+                    push(candidateRef, event.candidate.toJSON());
+                }
+            };
+
+            peerConnection.onconnectionstatechange = () => {
+                console.log('Connection state:', peerConnection.connectionState);
+            };
+        }
+
+        function updateStatus(status) {
+            statusDot.className = 'status-dot ' + status;
+            if (status === 'searching') {
+                statusText.textContent = '🔍 Eşleşme aranıyor...';
+            } else if (status === 'connected') {
+                statusText.textContent = '✅ Yabancı ile bağlandın!';
+            } else {
+                statusText.textContent = '⏸️ Bekleniyor...';
+            }
+        }
+
+        function addMessage(sender, text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message ' + sender;
+            
+            const bubble = document.createElement('div');
+            bubble.className = 'bubble';
+            bubble.textContent = text;
+            
+            messageDiv.appendChild(bubble);
+            
+            const welcomeScreen = chatArea.querySelector('.welcome-screen');
+            if (welcomeScreen) {
+                welcomeScreen.remove();
+            }
+            
+            chatArea.appendChild(messageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        function addSystemMessage(text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'system-message';
+            messageDiv.textContent = text;
+            chatArea.appendChild(messageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        function clearChat() {
+            chatArea.innerHTML = '';
+        }
+
+        async function startSearching() {
+            isSearching = true;
+            updateStatus('searching');
+            clearChat();
+            addSystemMessage('🔍 Sana uygun birisi aranıyor...');
+            newChatBtn.style.display = 'none';
+            stopBtn.style.display = 'block';
+
+            await initLocalStream();
+
+            const waitingRef = ref(db, 'waiting/' + myId);
+            set(waitingRef, { 
+                timestamp: serverTimestamp(),
+                seeking: true 
+            });
+
+            onValue(ref(db, 'waiting'), async (snapshot) => {
+                if (!isSearching || partnerId) return;
+
+                const waiting = snapshot.val();
+                if (!waiting) return;
+
+                const others = Object.keys(waiting).filter(id => id !== myId);
+                if (others.length > 0) {
+                    partnerId = others[0];
+                    chatRoomId = myId < partnerId ? myId + '_' + partnerId : partnerId + '_' + myId;
+                    
+                    await remove(ref(db, 'waiting/' + myId));
+                    await remove(ref(db, 'waiting/' + partnerId));
+                    
+                    const isCaller = myId < partnerId;
+                    await startChat(isCaller);
+                }
+            }, { onlyOnce: false });
+        }
+
+        async function startChat(isCaller) {
+            isSearching = false;
+            updateStatus('connected');
+            addSystemMessage('✅ Yabancı ile bağlandın! Sohbete başlayabilirsin.');
+            messageInput.disabled = false;
+            sendBtn.disabled = false;
+            messageInput.focus();
+
+            createPeerConnection();
+
+            if (isCaller) {
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                
+                await set(ref(db, 'chats/' + chatRoomId + '/offer'), {
+                    type: offer.type,
+                    sdp: offer.sdp
+                });
+            } else {
+                onValue(ref(db, 'chats/' + chatRoomId + '/offer'), async (snapshot) => {
+                    const offer = snapshot.val();
+                    if (offer && !peerConnection.currentRemoteDescription) {
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                        const answer = await peerConnection.createAnswer();
+                        await peerConnection.setLocalDescription(answer);
+                        
+                        await set(ref(db, 'chats/' + chatRoomId + '/answer'), {
+                            type: answer.type,
+                            sdp: answer.sdp
+                        });
+                    }
+                }, { onlyOnce: true });
+            }
+
+            if (isCaller) {
+                onValue(ref(db, 'chats/' + chatRoomId + '/answer'), async (snapshot) => {
+                    const answer = snapshot.val();
+                    if (answer && !peerConnection.currentRemoteDescription) {
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                    }
+                }, { onlyOnce: true });
+            }
+
+            onValue(ref(db, 'chats/' + chatRoomId + '/candidates/' + partnerId), (snapshot) => {
+                const candidates = snapshot.val();
+                if (candidates) {
+                    Object.values(candidates).forEach(async (candidate) => {
+                        try {
+                            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                        } catch (e) {
+                            console.error('Error adding ice candidate:', e);
+                        }
+                    });
+                }
+            });
+
+            const messagesRef = ref(db, 'chats/' + chatRoomId + '/messages');
+            onValue(messagesRef, (snapshot) => {
+                const data = snapshot.val();
+                if (!data) return;
+
+                const messages = Object.values(data);
+                const lastMessage = messages[messages.length - 1];
+                
+                if (lastMessage && lastMessage.sender !== myId) {
+                    const existingMessages = chatArea.querySelectorAll('.message.stranger');
+                    const lastDisplayed = existingMessages[existingMessages.length - 1];
+                    
+                    if (!lastDisplayed || lastDisplayed.textContent !== lastMessage.text) {
+                        addMessage('stranger', lastMessage.text);
+                    }
+                }
+            });
+
+            const typingRef = ref(db, 'chats/' + chatRoomId + '/typing/' + partnerId);
+            onValue(typingRef, (snapshot) => {
+                if (snapshot.val()) {
+                    typingIndicator.classList.add('show');
+                } else {
+                    typingIndicator.classList.remove('show');
+                }
+            });
+        }
+
+        function sendMessage() {
+            const text = messageInput.value.trim();
+            if (!text || !partnerId) return;
+
+            const messagesRef = ref(db, 'chats/' + chatRoomId + '/messages');
+            push(messagesRef, {
+                sender: myId,
+                text: text,
+                timestamp: serverTimestamp()
+            });
+
+            addMessage('you', text);
+            messageInput.value = '';
+            
+            set(ref(db, 'chats/' + chatRoomId + '/typing/' + myId), false);
+        }
+
+        function stopChat() {
+            if (chatRoomId) {
+                remove(ref(db, 'chats/' + chatRoomId));
+            }
+            if (isSearching) {
+                remove(ref(db, 'waiting/' + myId));
+            }
+
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+
+            localVideo.srcObject = null;
+            remoteVideo.srcObject = null;
+            videoPlaceholder.style.display = 'block';
+            videoControls.style.display = 'none';
+            
+            partnerId = null;
+            chatRoomId = null;
+            isSearching = false;
+            
+            updateStatus('');
+            messageInput.disabled = true;
+            sendBtn.disabled = true;
+            messageInput.value = '';
+            stopBtn.style.display = 'none';
+            newChatBtn.style.display = 'block';
+            typingIndicator.classList.remove('show');
+            
+            addSystemMessage('⛔ Sohbet sonlandırıldı.');
+        }
+
+        toggleCamera.addEventListener('click', () => {
+            if (localStream) {
+                const videoTrack = localStream.getVideoTracks()[0];
+                videoTrack.enabled = !videoTrack.enabled;
+                isCameraOn = videoTrack.enabled;
+                toggleCamera.classList.toggle('off');
+                toggleCamera.textContent = isCameraOn ? '📹' : '📵';
+            }
+        });
+
+        toggleMic.addEventListener('click', () => {
+            if (localStream) {
+                const audioTrack = localStream.getAudioTracks()[0];
+                audioTrack.enabled = !audioTrack.enabled;
+                isMicOn = audioTrack.enabled;
+                toggleMic.classList.toggle('off');
+                toggleMic.textContent = isMicOn ? '🎤' : '🔇';
+            }
+        });
+
+        sendBtn.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        messageInput.addEventListener('input', () => {
+            if (chatRoomId && partnerId) {
+                set(ref(db, 'chats/' + chatRoomId + '/typing/' + myId), messageInput.value.length > 0);
+            }
+        });
+
+        newChatBtn.addEventListener('click', startSearching);
+        stopBtn.addEventListener('click', stopChat);
+
+        window.addEventListener('beforeunload', () => {
+            stopChat();
+            remove(myPresenceRef);
+        });
+    </script>
+</body>
+</html>

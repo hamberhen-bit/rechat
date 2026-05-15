@@ -588,7 +588,7 @@
                 { urls: 'stun:stun2.l.google.com:19302' },
                 { urls: 'stun:stun3.l.google.com:19302' },
                 { urls: 'stun:stun4.l.google.com:19302' },
-                // TURN sunucuları (NAT arkasındaki bağlantılar için)
+                // Metered TURN (daha güvenilir)
                 {
                     urls: 'turn:openrelay.metered.ca:80',
                     username: 'openrelayproject',
@@ -603,9 +603,27 @@
                     urls: 'turn:openrelay.metered.ca:443?transport=tcp',
                     username: 'openrelayproject',
                     credential: 'openrelayproject'
+                },
+                // Alternatif TURN sunucuları
+                {
+                    urls: 'turn:relay1.expressturn.com:3478',
+                    username: 'efVN6Y52TKQPIJOH0O',
+                    credential: 'yo4Q8DkTAuFaKUSc'
+                },
+                {
+                    urls: 'turn:a.relay.metered.ca:80',
+                    username: 'e46a25349f791d8d07b52443',
+                    credential: 'VmFq/5hSXJARQJQl'
+                },
+                {
+                    urls: 'turn:a.relay.metered.ca:443',
+                    username: 'e46a25349f791d8d07b52443',
+                    credential: 'VmFq/5hSXJARQJQl'
                 }
             ],
-            iceCandidatePoolSize: 10
+            iceCandidatePoolSize: 10,
+            bundlePolicy: 'max-bundle',
+            rtcpMuxPolicy: 'require'
         };
 
         const chatArea = document.getElementById('chatArea');
@@ -704,12 +722,18 @@
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate && chatRoomId) {
                     console.log('🧊 ICE candidate gönderiliyor');
+                    console.log('   Type:', event.candidate.type);
+                    console.log('   Protocol:', event.candidate.protocol);
+                    console.log('   Address:', event.candidate.address || 'hidden');
+                    
                     const candidateRef = ref(db, 'chats/' + chatRoomId + '/candidates/' + myId);
                     push(candidateRef, {
                         candidate: event.candidate.candidate,
                         sdpMLineIndex: event.candidate.sdpMLineIndex,
                         sdpMid: event.candidate.sdpMid
                     });
+                } else if (!event.candidate) {
+                    console.log('✅ Tüm ICE candidates toplandı');
                 }
             };
 
@@ -906,30 +930,52 @@
                     });
                     console.log('✅ Offer gönderildi');
 
-                    // Answer'ı bekle (timeout ile)
-                    let answerReceived = false;
-                    const answerTimeout = setTimeout(() => {
-                        if (!answerReceived) {
-                            console.error('⏰ Answer timeout - 10 saniyede cevap gelmedi');
-                            addSystemMessage('⚠️ Video bağlantısı zaman aşımı. Tekrar deneyin.');
-                        }
-                    }, 10000);
+                    // Biraz bekle (receiver'ın offer işlemesi için)
+                    await new Promise(resolve => setTimeout(resolve, 1000));
 
-                    onValue(ref(db, 'chats/' + chatRoomId + '/answer'), async (snapshot) => {
-                        const answer = snapshot.val();
-                        if (answer && peerConnection && !peerConnection.currentRemoteDescription) {
-                            answerReceived = true;
-                            clearTimeout(answerTimeout);
-                            console.log('📩 Answer alındı');
-                            try {
-                                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-                                console.log('✅ Remote description set edildi');
-                                addSystemMessage('🎥 Video sinyal değişimi tamamlandı!');
-                            } catch (e) {
-                                console.error('❌ Answer hatası:', e);
-                            }
+                    // Önce mevcut answer'ı kontrol et
+                    const answerSnapshot = await get(ref(db, 'chats/' + chatRoomId + '/answer'));
+                    const existingAnswer = answerSnapshot.val();
+                    
+                    if (existingAnswer) {
+                        console.log('📩 Mevcut answer bulundu (Firebase\'de zaten vardı)');
+                        try {
+                            await peerConnection.setRemoteDescription(new RTCSessionDescription(existingAnswer));
+                            console.log('✅ Remote description set edildi');
+                            addSystemMessage('🎥 Video sinyal değişimi tamamlandı!');
+                        } catch (e) {
+                            console.error('❌ Mevcut answer işleme hatası:', e);
                         }
-                    }, { onlyOnce: true });
+                    } else {
+                        console.log('📞 Answer henüz yok, dinlemeye başlıyorum...');
+                        
+                        // Answer henüz yoksa dinle
+                        let answerReceived = false;
+                        const answerTimeout = setTimeout(() => {
+                            if (!answerReceived) {
+                                console.error('⏰ Answer timeout - 10 saniyede cevap gelmedi');
+                                addSystemMessage('⚠️ Video bağlantısı zaman aşımı. Tekrar deneyin.');
+                            }
+                        }, 10000);
+
+                        onValue(ref(db, 'chats/' + chatRoomId + '/answer'), async (snapshot) => {
+                            const answer = snapshot.val();
+                            console.log('🔍 Answer değişikliği algılandı:', answer ? 'Mevcut' : 'Yok');
+                            
+                            if (answer && peerConnection && !peerConnection.currentRemoteDescription && !answerReceived) {
+                                answerReceived = true;
+                                clearTimeout(answerTimeout);
+                                console.log('📩 Answer alındı (listener ile)');
+                                try {
+                                    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                                    console.log('✅ Remote description set edildi');
+                                    addSystemMessage('🎥 Video sinyal değişimi tamamlandı!');
+                                } catch (e) {
+                                    console.error('❌ Answer hatası:', e);
+                                }
+                            }
+                        });
+                    }
                 } catch (e) {
                     console.error('❌ Offer hatası:', e);
                     addSystemMessage('⚠️ Video bağlantısı kurulamadı. Sadece metin sohbeti yapabilirsiniz.');

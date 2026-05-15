@@ -807,8 +807,10 @@
                 console.error('❌ Bekleme kuyruğu hatası:', error.message);
             });
 
+            let matchingInProgress = false;
+
             onValue(ref(db, 'waiting'), async (snapshot) => {
-                if (!isSearching || partnerId) return;
+                if (!isSearching || partnerId || matchingInProgress) return;
 
                 const waiting = snapshot.val();
                 console.log('👥 Bekleyen kullanıcılar:', waiting);
@@ -819,17 +821,38 @@
                 console.log('🔍 Diğer kullanıcılar:', others);
                 
                 if (others.length > 0) {
+                    matchingInProgress = true;
                     partnerId = others[0];
                     chatRoomId = myId < partnerId ? myId + '_' + partnerId : partnerId + '_' + myId;
                     
                     console.log('🎉 Eşleşme bulundu! Partner:', partnerId);
                     console.log('🏠 Oda ID:', chatRoomId);
+                    console.log('🎲 Ben caller mıyım?', myId < partnerId);
                     
-                    await remove(ref(db, 'waiting/' + myId));
-                    await remove(ref(db, 'waiting/' + partnerId));
-                    
-                    const isCaller = myId < partnerId;
-                    await startChat(isCaller);
+                    try {
+                        // Önce chat room'u oluştur
+                        await set(ref(db, 'chats/' + chatRoomId + '/created'), {
+                            timestamp: serverTimestamp(),
+                            users: [myId, partnerId]
+                        });
+                        
+                        // Sonra waiting'den çık
+                        await remove(ref(db, 'waiting/' + myId));
+                        await remove(ref(db, 'waiting/' + partnerId));
+                        
+                        console.log('✅ Waiting kuyruğundan çıkıldı');
+                        
+                        // Biraz bekle (diğer tarafın da hazır olması için)
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        
+                        const isCaller = myId < partnerId;
+                        await startChat(isCaller);
+                    } catch (error) {
+                        console.error('❌ Eşleşme hatası:', error);
+                        matchingInProgress = false;
+                        partnerId = null;
+                        chatRoomId = null;
+                    }
                 }
             }, { onlyOnce: false });
         }
@@ -875,21 +898,33 @@
                     });
                     await peerConnection.setLocalDescription(offer);
                     
+                    console.log('📤 Offer Firebase\'e yazılıyor...');
                     await set(ref(db, 'chats/' + chatRoomId + '/offer'), {
                         type: offer.type,
-                        sdp: offer.sdp
+                        sdp: offer.sdp,
+                        timestamp: serverTimestamp()
                     });
                     console.log('✅ Offer gönderildi');
 
-                    // Answer'ı bekle
+                    // Answer'ı bekle (timeout ile)
+                    let answerReceived = false;
+                    const answerTimeout = setTimeout(() => {
+                        if (!answerReceived) {
+                            console.error('⏰ Answer timeout - 10 saniyede cevap gelmedi');
+                            addSystemMessage('⚠️ Video bağlantısı zaman aşımı. Tekrar deneyin.');
+                        }
+                    }, 10000);
+
                     onValue(ref(db, 'chats/' + chatRoomId + '/answer'), async (snapshot) => {
                         const answer = snapshot.val();
                         if (answer && peerConnection && !peerConnection.currentRemoteDescription) {
+                            answerReceived = true;
+                            clearTimeout(answerTimeout);
                             console.log('📩 Answer alındı');
                             try {
                                 await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
                                 console.log('✅ Remote description set edildi');
-                                addSystemMessage('🎥 Video bağlantısı kuruldu!');
+                                addSystemMessage('🎥 Video sinyal değişimi tamamlandı!');
                             } catch (e) {
                                 console.error('❌ Answer hatası:', e);
                             }
@@ -902,10 +937,22 @@
             } else {
                 console.log('📞 Receiver: Offer bekleniyor...');
                 
-                // Offer'ı bekle
+                // Offer'ı bekle (timeout ile)
+                let offerReceived = false;
+                const offerTimeout = setTimeout(() => {
+                    if (!offerReceived) {
+                        console.error('⏰ Offer timeout - 10 saniyede offer gelmedi');
+                        addSystemMessage('⚠️ Karşı taraftan sinyal bekleniyor...');
+                    }
+                }, 10000);
+
                 onValue(ref(db, 'chats/' + chatRoomId + '/offer'), async (snapshot) => {
                     const offer = snapshot.val();
+                    console.log('🔍 Offer kontrolü:', offer ? 'Mevcut' : 'Yok');
+                    
                     if (offer && peerConnection && !peerConnection.currentRemoteDescription) {
+                        offerReceived = true;
+                        clearTimeout(offerTimeout);
                         console.log('📩 Offer alındı');
                         try {
                             await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
@@ -914,18 +961,20 @@
                             const answer = await peerConnection.createAnswer();
                             await peerConnection.setLocalDescription(answer);
                             
+                            console.log('📤 Answer Firebase\'e yazılıyor...');
                             await set(ref(db, 'chats/' + chatRoomId + '/answer'), {
                                 type: answer.type,
-                                sdp: answer.sdp
+                                sdp: answer.sdp,
+                                timestamp: serverTimestamp()
                             });
                             console.log('✅ Answer gönderildi');
-                            addSystemMessage('🎥 Video bağlantısı kuruldu!');
+                            addSystemMessage('🎥 Video sinyal değişimi tamamlandı!');
                         } catch (e) {
                             console.error('❌ Answer hatası:', e);
                             addSystemMessage('⚠️ Video bağlantısı kurulamadı. Sadece metin sohbeti yapabilirsiniz.');
                         }
                     }
-                }, { onlyOnce: true });
+                });
             }
 
             // Mesajlar

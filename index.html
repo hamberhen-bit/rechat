@@ -541,7 +541,7 @@
 
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getDatabase, ref, set, onValue, push, remove, onDisconnect, serverTimestamp, update } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+        import { getDatabase, ref, set, onValue, push, remove, onDisconnect, serverTimestamp, update, get } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 
         const firebaseConfig = {
             apiKey: "AIzaSyAA2iYWRbYzAy5HqBKgfM6_GOoE_kvtBCg",
@@ -937,44 +937,72 @@
             } else {
                 console.log('📞 Receiver: Offer bekleniyor...');
                 
-                // Offer'ı bekle (timeout ile)
-                let offerReceived = false;
-                const offerTimeout = setTimeout(() => {
-                    if (!offerReceived) {
-                        console.error('⏰ Offer timeout - 10 saniyede offer gelmedi');
-                        addSystemMessage('⚠️ Karşı taraftan sinyal bekleniyor...');
+                // Önce mevcut offer'ı kontrol et
+                const offerSnapshot = await get(ref(db, 'chats/' + chatRoomId + '/offer'));
+                const existingOffer = offerSnapshot.val();
+                
+                if (existingOffer) {
+                    console.log('📩 Mevcut offer bulundu (Firebase\'de zaten vardı)');
+                    try {
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(existingOffer));
+                        console.log('✅ Remote description set edildi');
+                        
+                        const answer = await peerConnection.createAnswer();
+                        await peerConnection.setLocalDescription(answer);
+                        
+                        console.log('📤 Answer Firebase\'e yazılıyor...');
+                        await set(ref(db, 'chats/' + chatRoomId + '/answer'), {
+                            type: answer.type,
+                            sdp: answer.sdp,
+                            timestamp: serverTimestamp()
+                        });
+                        console.log('✅ Answer gönderildi');
+                        addSystemMessage('🎥 Video sinyal değişimi tamamlandı!');
+                    } catch (e) {
+                        console.error('❌ Mevcut offer işleme hatası:', e);
                     }
-                }, 10000);
-
-                onValue(ref(db, 'chats/' + chatRoomId + '/offer'), async (snapshot) => {
-                    const offer = snapshot.val();
-                    console.log('🔍 Offer kontrolü:', offer ? 'Mevcut' : 'Yok');
+                } else {
+                    console.log('📞 Offer henüz yok, dinlemeye başlıyorum...');
                     
-                    if (offer && peerConnection && !peerConnection.currentRemoteDescription) {
-                        offerReceived = true;
-                        clearTimeout(offerTimeout);
-                        console.log('📩 Offer alındı');
-                        try {
-                            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-                            console.log('✅ Remote description set edildi');
-                            
-                            const answer = await peerConnection.createAnswer();
-                            await peerConnection.setLocalDescription(answer);
-                            
-                            console.log('📤 Answer Firebase\'e yazılıyor...');
-                            await set(ref(db, 'chats/' + chatRoomId + '/answer'), {
-                                type: answer.type,
-                                sdp: answer.sdp,
-                                timestamp: serverTimestamp()
-                            });
-                            console.log('✅ Answer gönderildi');
-                            addSystemMessage('🎥 Video sinyal değişimi tamamlandı!');
-                        } catch (e) {
-                            console.error('❌ Answer hatası:', e);
-                            addSystemMessage('⚠️ Video bağlantısı kurulamadı. Sadece metin sohbeti yapabilirsiniz.');
+                    // Offer henüz yoksa dinle
+                    let offerReceived = false;
+                    const offerTimeout = setTimeout(() => {
+                        if (!offerReceived) {
+                            console.error('⏰ Offer timeout - 10 saniyede offer gelmedi');
+                            addSystemMessage('⚠️ Karşı taraftan sinyal bekleniyor...');
                         }
-                    }
-                });
+                    }, 10000);
+
+                    onValue(ref(db, 'chats/' + chatRoomId + '/offer'), async (snapshot) => {
+                        const offer = snapshot.val();
+                        console.log('🔍 Offer değişikliği algılandı:', offer ? 'Mevcut' : 'Yok');
+                        
+                        if (offer && peerConnection && !peerConnection.currentRemoteDescription && !offerReceived) {
+                            offerReceived = true;
+                            clearTimeout(offerTimeout);
+                            console.log('📩 Offer alındı (listener ile)');
+                            try {
+                                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                                console.log('✅ Remote description set edildi');
+                                
+                                const answer = await peerConnection.createAnswer();
+                                await peerConnection.setLocalDescription(answer);
+                                
+                                console.log('📤 Answer Firebase\'e yazılıyor...');
+                                await set(ref(db, 'chats/' + chatRoomId + '/answer'), {
+                                    type: answer.type,
+                                    sdp: answer.sdp,
+                                    timestamp: serverTimestamp()
+                                });
+                                console.log('✅ Answer gönderildi');
+                                addSystemMessage('🎥 Video sinyal değişimi tamamlandı!');
+                            } catch (e) {
+                                console.error('❌ Answer hatası:', e);
+                                addSystemMessage('⚠️ Video bağlantısı kurulamadı. Sadece metin sohbeti yapabilirsiniz.');
+                            }
+                        }
+                    });
+                }
             }
 
             // Mesajlar
